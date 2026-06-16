@@ -1,26 +1,54 @@
 import os
+import random
 import asyncio
 import logging
+import httpx
 from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
 from dotenv import load_dotenv
 
-# Load parameters securely from the local .env root file
+# Ingest all configurations from your local secure .env file
 load_dotenv()
 
-# Configure uniform system logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - [%(levelname)s] - %(message)s")
 
-# Extract environment parameters
 BOOKMAKER_A_URL = os.getenv("BOOKMAKER_A_URL")
 BOOKMAKER_B_URL = os.getenv("BOOKMAKER_B_URL")
 TOTAL_BANKROLL = float(os.getenv("TOTAL_BANKROLL", 5000.0))
-SCAN_DELAY = int(os.getenv("SCAN_DELAY_SECONDS", 15))
+BASE_SCAN_DELAY = int(os.getenv("SCAN_DELAY_SECONDS", 10))
+
+# Anonymous API Routing Parameters
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+PREMIUM_CHANNEL_ID = os.getenv("PREMIUM_CHANNEL_ID")
+FREE_CHANNEL_ID = os.getenv("FREE_CHANNEL_ID")
 
 
-def run_arbitrage_engine(odds_1: float, odds_2: float):
+def transmit_telegram_broadcast(target_chat_id: str, message: str):
+    """Dispatches payload to specific channel nodes anonymously."""
+    if not TELEGRAM_BOT_TOKEN or not target_chat_id:
+        logging.warning("Telegram routing properties missing. Broadcast bypassed.")
+        return
+    
+    endpoint = f"https://telegram.org{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": target_chat_id,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
+    try:
+        response = httpx.post(endpoint, json=payload, timeout=12)
+        if response.status_code == 200:
+            logging.info(f"✅ Success: Dispatched broadcast data to channel gateway: {target_chat_id}")
+        else:
+            logging.error(f"Telegram transmission rejected: {response.text}")
+    except Exception as e:
+        logging.error(f"Telegram communication latency error: {e}")
+
+
+def run_arbitrage_engine(match_title: str, status: str, odds_1: float, odds_2: float):
     """
-    Executes standard probability matrix computations in KES.
-    Filters out obvious bookmaker typos and outputs copy-paste templates.
+    Computes cross-market probabilities and routes signals based on value metrics.
+    Splits free low-margin picks from high-yielding premium selections automatically.
     """
     prob_1 = 1 / odds_1
     prob_2 = 1 / odds_2
@@ -29,136 +57,133 @@ def run_arbitrage_engine(odds_1: float, odds_2: float):
     if arbitrage_ratio < 1.0:
         margin_percent = (1 - arbitrage_ratio) * 100
         
-        # --- PROFIT MARGIN FILTERS (PROTECTION CORE) ---
-        MIN_PROFIT_MARGIN = 1.5   # Drops tiny margins that aren't worth transaction times
-        MAX_PROFIT_MARGIN = 20.0  # Drops dangerous typos that bookmakers will cancel/void
-
-        if margin_percent > MAX_PROFIT_MARGIN:
-            logging.warning(f"⚠️ PALPABLE ERROR DROPPED: Silently skipped a highly suspicious {margin_percent:.2f}% gap to protect user accounts.")
+        # Guard filters against manual typos or unhedged pricing adjustments
+        if margin_percent > 20.0 or margin_percent < 1.5:
             return 
+
+        # Extract your live hosted GitHub Pages calculator form domain URL link
+        calc_link = os.getenv('CALCULATOR_URL', 'https://github.io')
+        
+        # --- ANONYMOUS SAAS FREEMIUM ROUTING CORE ---
+        if margin_percent <= 4.0:
+            # BROADCAST TO PUBLIC FREE HUB FOR MARKETING ACQUISITION
+            free_msg = (
+                f"🆓 *DAILY FREE COUPLING PICK* 🆓\n"
+                f"Status: `{status.upper()}`\n\n"
+                f"🏆 *Match:* `{match_title}`\n"
+                f"📈 *Guaranteed Profit Yield:* `+{margin_percent:.2f}%` risk-free\n\n"
+                f"👉 *SportyBet Odds (Outcome 1):* `{odds_1:.2f}`\n"
+                f"👉 *Betika Odds (Outcome 2):* `{odds_2:.2f}`\n\n"
+                f"🧮 *Verify Math or Calculate Stakes For Free Here:* {calc_link}\n\n"
+                f"🔥 _Want high-yield 5% to 20% premium signals all day? Unlock VIP inside our shop:_ @Your_Billing_Bot"
+            )
+            transmit_telegram_broadcast(FREE_CHANNEL_ID, free_msg)
             
-        if margin_percent < MIN_PROFIT_MARGIN:
-            return 
-        # -----------------------------------------------
-
-        # Prints out a universal, budget-inclusive copy-paste template for your channel
-        print("\n" + "="*50)
-        print("📋 COPY-PASTE SUBSCRIBER TELEGRAM TEMPLATE:")
-        print("="*50)
-        print(f"🚨 *NEW LIVE ARBITRAGE SIGNAL DETECTED* 🚨\n")
-        print(f"📈 *Guaranteed Profit Yield:* `+{margin_percent:.2f}%` risk-free\n")
-        print(f"👉 *SportyBet Odds (Player 1):* `{odds_1:.2f}`")
-        print(f"👉 *Betika Odds (Player 2):* `{odds_2:.2f}`\n")
-        print(f"🧮 *Calculate Your Exact Stakes Here:* [Paste Your Hosted Form URL Link Here]")
-        print("="*50 + "\n")
-    else:
-        logging.info(f"Scanning Kenyan platforms... Market flat. Ratio: {arbitrage_ratio:.4f}")
+        else:
+            # ROUTE TO SECURE LOCKED PREMIUM VIP CHANNELS
+            premium_msg = (
+                f"👑 *PREMIUM VIP HIGH-YIELD SIGNAL* 👑\n"
+                f"Status: `{status.upper()}`\n\n"
+                f"🏆 *Match:* `{match_title}`\n"
+                f"📈 *Guaranteed Premium Yield:* `+{margin_percent:.2f}%` risk-free\n\n"
+                f"👉 *SportyBet Odds (Outcome 1):* `{odds_1:.2f}`\n"
+                f"👉 *Betika Odds (Outcome 2):* `{odds_2:.2f}`\n\n"
+                f"🧮 *Calculate Your Stakes Instantly:* {calc_link}"
+            )
+            transmit_telegram_broadcast(PREMIUM_CHANNEL_ID, premium_msg)
+            
+        print(f"\n[+] Executed System Distribution: {match_title} | Yield: {margin_percent:.2f}%")
 
 
-async def scrape_sportybet(playwright) -> dict:
-    """Launches an invisible browser to grab the top live match tennis odds from SportyBet."""
+async def scrape_full_spectrum_board(playwright, url: str, site_name: str) -> dict:
+    """Layout-independent stealth web browser data scraper."""
+    market_data = {}
     try:
         browser = await playwright.chromium.launch(headless=True)
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            viewport={"width": random.randint(1366, 1440), "height": random.randint(768, 900)},
+            locale="en-KE",
+            timezone_id="Africa/Nairobi"
         )
         page = await context.new_page()
-        await page.goto(BOOKMAKER_A_URL, timeout=30000, wait_until="domcontentloaded")
         
-        await page.wait_for_selector(".m-outcome-odds", timeout=15000)
-        # Isolates selection strictly to the first active match container to prevent game mixing
-        raw_elements = await page.locator(".m-outcome-odds").first.locator("span").all_inner_texts()
+        # Inject the active stealth script framework to mask navigator.webdriver flags
+        await stealth_async(page)
+        
+        await page.goto(url, timeout=45000, wait_until="domcontentloaded")
+        
+        # Human Action Simulation: Subtle natural scrolling to clear advanced heuristics
+        for _ in range(random.randint(2, 4)):
+            await page.mouse.wheel(0, random.randint(200, 400))
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+            
+        elements = await page.locator("div, row, button, a").all_inner_texts()
         await browser.close()
         
-        clean_odds = [float(x.strip()) for x in raw_elements if x.strip().replace('.', '', 1).isdigit()]
-        
-        if len(clean_odds) >= 2:
-            return {"Player_1": clean_odds, "Player_2": clean_odds}
-        return None
-    except Exception as e:
-        logging.error(f"SportyBet structural extraction issue: {e}")
-        return None
-
-
-async def scrape_betika(playwright) -> dict:
-    """Launches an invisible browser with generic text extraction failsafes for Betika."""
-    try:
-        browser = await playwright.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 720}
-        )
-        page = await context.new_page()
-        await page.goto(BOOKMAKER_B_URL, timeout=45000, wait_until="domcontentloaded")
-        
-        target_selector = None
-        for selector in [".odds__button", "button", ".live-match__odds"]:
+        for block in elements:
             try:
-                await page.wait_for_selector(selector, timeout=5000)
-                target_selector = selector
-                break
+                lines = [line.strip() for line in block.split('\n') if line.strip()]
+                if not lines:
+                    continue
+                
+                teams_list = [l for l in lines if len(l) > 3 and ("vs" in l.lower() or "-" in l) and not l.replace('.', '', 1).isdigit()]
+                odds_list = [float(l) for l in lines if l.replace('.', '', 1).isdigit() and 1.05 < float(l) < 25.0]
+                
+                is_live = any("live" in l.lower() or "'" in l for l in lines)
+                status_label = "Live" if is_live else "Upcoming"
+                
+                if teams_list and len(odds_list) >= 2:
+                    match_title = teams_list
+                    match_key = match_title.lower().replace(" ", "").replace("-", "vs")
+                    market_data[match_key] = {
+                        "title": match_title,
+                        "home_odds": odds_list,
+                        "away_odds": odds_list,
+                        "status": status_label
+                    }
             except:
                 continue
                 
-        if not target_selector:
-            await browser.close()
-            logging.error("Betika layout detection timed out across selectors.")
-            return None
-            
-        # Isolates selection strictly to the first active match container to prevent game mixing
-        raw_elements = await page.locator(target_selector).first.locator("span").all_inner_texts()
-        await browser.close()
-        
-        clean_odds = [float(x.strip()) for x in raw_elements if x.strip().replace('.', '', 1).isdigit() and float(x.strip()) > 1.0]
-        
-        if len(clean_odds) >= 2:
-            return {"Player_1": clean_odds, "Player_2": clean_odds}
-        return None
+        return market_data
     except Exception as e:
-        logging.error(f"Betika alternative tracker issue: {e}")
-        return None
+        logging.error(f"Error parsing global sports feed for {site_name}: {e}")
+        return {}
 
 
 async def runtime_loop():
-    logging.info(f"Initializing Anonymized African Tracker Engine. Base Pool: KES {TOTAL_BANKROLL}")
+    logging.info(f"Stealth Dual-Stream SaaS Engine Online and Initialized.")
     async with async_playwright() as playwright:
         while True:
             try:
-                # Gather live data concurrently from both sites
-                tasks = [scrape_sportybet(playwright), scrape_betika(playwright)]
-                extracted_payloads = await asyncio.gather(*tasks)
+                tasks = [
+                    scrape_full_spectrum_board(playwright, BOOKMAKER_A_URL, "SportyBet"),
+                    scrape_full_spectrum_board(playwright, BOOKMAKER_B_URL, "Betika")
+                ]
+                sporty_matrix, betika_matrix = await asyncio.gather(*tasks)
                 
-                # Cleanly unpack array components into separate variables
-                odds_a = extracted_payloads[0]
-                odds_b = extracted_payloads[1]
-                
-                # --- CRITICAL FAIL-SAFE VALIDATION CHECK ---
-                if odds_a is None or odds_b is None:
-                    logging.warning("⚠️ One of the target crawlers returned empty datasets. Skipping loop to maintain stability...")
-                    await asyncio.sleep(SCAN_DELAY)
+                if not sporty_matrix or not betika_matrix:
+                    logging.info("Scanning full matrix... Markets balanced. (Waiting for adjustments)")
+                    await asyncio.sleep(BASE_SCAN_DELAY + random.uniform(2.0, 5.0))
                     continue
-                # --------------------------------------------
                 
-                # Safely cross-compare specific top rows without array collision crashes
-                best_p1_a = odds_a["Player_1"][0] if len(odds_a["Player_1"]) > 0 else 0
-                best_p2_b = odds_b["Player_2"][1] if len(odds_b["Player_2"]) > 1 else (odds_b["Player_2"][0] if len(odds_b["Player_2"]) > 0 else 0)
-                
-                best_p1_b = odds_b["Player_1"][0] if len(odds_b["Player_1"]) > 0 else 0
-                best_p2_a = odds_a["Player_2"][1] if len(odds_a["Player_2"]) > 1 else (odds_a["Player_2"][0] if len(odds_a["Player_2"]) > 0 else 0)
-                
-                if best_p1_a > 0 and best_p2_b > 0:
-                    run_arbitrage_engine(best_p1_a, best_p2_b)
-                if best_p1_b > 0 and best_p2_a > 0:
-                    run_arbitrage_engine(best_p1_b, best_p2_a)
-                
+                for match_key, sporty_item in sporty_matrix.items():
+                    if match_key in betika_matrix:
+                        betika_item = betika_matrix[match_key]
+                        status = sporty_item["status"]
+                        
+                        run_arbitrage_engine(sporty_item["title"], status, sporty_item["home_odds"], betika_item["away_odds"])
+                        run_arbitrage_engine(sporty_item["title"], status, betika_item["home_odds"], sporty_item["away_odds"])
+                        
             except Exception as loop_error:
-                logging.error(f"Internal processing exception handled safely: {loop_error}")
+                logging.error(f"Global processing loop exception handled: {loop_error}")
                 
-            await asyncio.sleep(SCAN_DELAY)
+            dynamic_jitter = BASE_SCAN_DELAY + random.uniform(1.5, 6.0)
+            await asyncio.sleep(dynamic_jitter)
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(runtime_loop())
     except KeyboardInterrupt:
-        logging.info("Background processes cleanly suspended.")
+        logging.info("SaaS tracking modules suspended.")

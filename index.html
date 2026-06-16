@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Arb Advanced Multi-Mode Calculator</title>
+    <title>Smart Arb Advanced Strategy Calculator</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
@@ -22,7 +22,7 @@
             border-radius: 16px;
             box-shadow: 0 8px 24px rgba(0,0,0,0.5);
             width: 100%;
-            max-width: 420px;
+            max-width: 440px;
             border: 1px solid #2d2d2d;
         }
         h2 { text-align: center; color: #ff9800; margin-top: 0; }
@@ -34,6 +34,20 @@
             background-color: #2a2a2a; color: #fff; font-size: 16px; box-sizing: border-box;
         }
         input:focus, select:focus { outline: none; border-color: #ff9800; }
+        
+        /* Dynamic Advisory Notification Feature Box */
+        .advisory-box {
+            margin-top: 15px;
+            padding: 12px 15px;
+            background-color: #2b2214;
+            border-left: 4px solid #ff9800;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #ffd59a;
+            line-height: 1.5;
+            display: none;
+        }
+        
         .results-box {
             margin-top: 25px; padding: 15px; background-color: #252525;
             border-radius: 10px; border-left: 4px solid #4caf50; display: none;
@@ -45,12 +59,12 @@
 <body>
 
 <div class="calculator-card">
-    <h2>🎯 Smart Arb Advanced Form</h2>
-    <p class="subtitle">Guaranteed high income across all match outcomes.</p>
+    <h2>🎯 Smart Arb Calculator</h2>
+    <p class="subtitle">Enter your details to generate your risk-free stakes.</p>
     
     <div class="input-group">
-        <label for="budget">Total Investment Budget (KES):</label>
-        <input type="number" id="budget" placeholder="e.g. 1000" oninput="calculateStakes()">
+        <label for="budget">Total Betting Stake (KES):</label>
+        <input type="number" id="budget" placeholder="e.g. 500" oninput="calculateStakes()">
     </div>
     
     <div class="input-group">
@@ -64,21 +78,24 @@
     </div>
 
     <div class="input-group">
-        <label for="strategy">Profit Optimization Strategy:</label>
+        <label for="strategy">Profit Distribution Plan:</label>
         <select id="strategy" onchange="calculateStakes()">
-            <option value="equal">Equal Profit (Guaranteed Income on Both Sides)</option>
-            <option value="bias1">Max Windfall on SportyBet (Betika Breaks Even)</option>
-            <option value="bias2">Max Windfall on Betika (SportyBet Breaks Even)</option>
+            <option value="equal">Equal Profit Split (Balanced Income)</option>
+            <option value="bias1">Maximize SportyBet (Betika Breaks Even)</option>
+            <option value="bias2">Maximize Betika (SportyBet Breaks Even)</option>
         </select>
     </div>
 
+    <!-- Dynamic Recommended Stake Advisory Feature -->
+    <div class="advisory-box" id="advisory"></div>
+
     <div class="results-box" id="results">
         <div class="result-item">
-            <span>Stake for SportyBet:</span>
+            <span>SportyBet Slip Stake:</span>
             <span id="stake1" style="font-weight: bold;">KES 0</span>
         </div>
         <div class="result-item">
-            <span>Stake for Betika:</span>
+            <span>Betika Slip Stake:</span>
             <span id="stake2" style="font-weight: bold;">KES 0</span>
         </div>
         <hr style="border: 0; border-top: 1px solid #3d3d3d; margin: 12px 0;">
@@ -100,9 +117,11 @@ function calculateStakes() {
     const odds2 = parseFloat(document.getElementById('odds2').value);
     const strategy = document.getElementById('strategy').value;
     const resultsBox = document.getElementById('results');
+    const advisoryBox = document.getElementById('advisory');
 
     if (!budget || !odds1 || !odds2 || odds1 <= 1 || odds2 <= 1) {
         resultsBox.style.display = 'none';
+        advisoryBox.style.display = 'none';
         return;
     }
 
@@ -112,11 +131,26 @@ function calculateStakes() {
 
     if (arbRatio >= 1.0) {
         resultsBox.style.display = 'block';
-        document.getElementById('stake1').innerText = "No Arbitrage Available";
-        document.getElementById('stake2').innerText = "Market is Flat";
+        advisoryBox.style.display = 'none';
+        document.getElementById('stake1').innerText = "No Arbitrage Window";
+        document.getElementById('stake2').innerText = "Market Balanced";
         document.getElementById('profit1').innerText = "KES 0.00";
         document.getElementById('profit2').innerText = "KES 0.00";
         return;
+    }
+
+    // Dynamic Minimum Recommended Stake Advisory Logic Integration
+    const currentMarginPercent = (1 - arbRatio) * 100;
+    const dailySubscriptionPassCost = 50; // KES 50 base overhead daily
+    
+    // Formula to find the breakdown budget baseline threshold
+    const minimumRecommendedStake = Math.ceil(dailySubscriptionPassCost / (currentMarginPercent / 100));
+
+    if (budget < minimumRecommendedStake) {
+        advisoryBox.innerHTML = `💡 *Recommendation:* Based on this match's <b>${currentMarginPercent.toFixed(1)}%</b> profit margin and a KES 50 daily access cost, we recommend a total betting stake of at least <b>KES ${minimumRecommendedStake.toLocaleString()}</b> to fully cover your pass fee and lock in solid net profits today.`;
+        advisoryBox.style.display = 'block';
+    } else {
+        advisoryBox.style.display = 'none';
     }
 
     let stake1 = 0;
@@ -126,11 +160,9 @@ function calculateStakes() {
         stake1 = Math.round((budget * prob1) / arbRatio);
         stake2 = Math.round((budget * prob2) / arbRatio);
     } else if (strategy === "bias1") {
-        // Betika is set to exactly return the initial budget (Break Even)
         stake2 = Math.round(budget / odds2);
         stake1 = budget - stake2;
     } else if (strategy === "bias2") {
-        // SportyBet is set to exactly return the initial budget (Break Even)
         stake1 = Math.round(budget / odds1);
         stake2 = budget - stake1;
     }
@@ -143,7 +175,6 @@ function calculateStakes() {
     document.getElementById('stake1').innerText = `KES ${stake1}`;
     document.getElementById('stake2').innerText = `KES ${stake2}`;
     
-    // Display dynamic returns based on user choice
     document.getElementById('profit1').innerText = `KES ${netProfit1 >= 0 ? '+' : ''}${netProfit1.toFixed(2)} (${((netProfit1/totalInvested)*100).toFixed(2)}%)`;
     document.getElementById('profit1').style.color = netProfit1 >= 0 ? "#4caf50" : "#ff9800";
     
