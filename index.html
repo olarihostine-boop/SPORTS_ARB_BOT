@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Arb Advanced Multi-Mode Calculator</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .calculator-card {
+            background-color: #1e1e1e;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            width: 100%;
+            max-width: 420px;
+            border: 1px solid #2d2d2d;
+        }
+        h2 { text-align: center; color: #ff9800; margin-top: 0; }
+        p.subtitle { text-align: center; font-size: 14px; color: #888; margin-bottom: 25px; }
+        .input-group { margin-bottom: 18px; }
+        label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 600; color: #b0b0b0; }
+        input, select {
+            width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #3d3d3d;
+            background-color: #2a2a2a; color: #fff; font-size: 16px; box-sizing: border-box;
+        }
+        input:focus, select:focus { outline: none; border-color: #ff9800; }
+        .results-box {
+            margin-top: 25px; padding: 15px; background-color: #252525;
+            border-radius: 10px; border-left: 4px solid #4caf50; display: none;
+        }
+        .result-item { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 15px; }
+        .profit-highlight { font-weight: bold; color: #4caf50; }
+    </style>
+</head>
+<body>
+
+<div class="calculator-card">
+    <h2>🎯 Smart Arb Advanced Form</h2>
+    <p class="subtitle">Guaranteed high income across all match outcomes.</p>
+    
+    <div class="input-group">
+        <label for="budget">Total Investment Budget (KES):</label>
+        <input type="number" id="budget" placeholder="e.g. 1000" oninput="calculateStakes()">
+    </div>
+    
+    <div class="input-group">
+        <label for="odds1">SportyBet Odds (Outcome 1):</label>
+        <input type="number" step="0.01" id="odds1" placeholder="e.g. 2.10" oninput="calculateStakes()">
+    </div>
+    
+    <div class="input-group">
+        <label for="odds2">Betika Odds (Outcome 2):</label>
+        <input type="number" step="0.01" id="odds2" placeholder="e.g. 2.15" oninput="calculateStakes()">
+    </div>
+
+    <div class="input-group">
+        <label for="strategy">Profit Optimization Strategy:</label>
+        <select id="strategy" onchange="calculateStakes()">
+            <option value="equal">Equal Profit (Guaranteed Income on Both Sides)</option>
+            <option value="bias1">Max Windfall on SportyBet (Betika Breaks Even)</option>
+            <option value="bias2">Max Windfall on Betika (SportyBet Breaks Even)</option>
+        </select>
+    </div>
+
+    <div class="results-box" id="results">
+        <div class="result-item">
+            <span>Stake for SportyBet:</span>
+            <span id="stake1" style="font-weight: bold;">KES 0</span>
+        </div>
+        <div class="result-item">
+            <span>Stake for Betika:</span>
+            <span id="stake2" style="font-weight: bold;">KES 0</span>
+        </div>
+        <hr style="border: 0; border-top: 1px solid #3d3d3d; margin: 12px 0;">
+        <div class="result-item">
+            <span>If Outcome 1 Hits:</span>
+            <span id="profit1" class="profit-highlight">KES 0</span>
+        </div>
+        <div class="result-item">
+            <span>If Outcome 2 Hits:</span>
+            <span id="profit2" class="profit-highlight">KES 0</span>
+        </div>
+    </div>
+</div>
+
+<script>
+function calculateStakes() {
+    const budget = parseFloat(document.getElementById('budget').value);
+    const odds1 = parseFloat(document.getElementById('odds1').value);
+    const odds2 = parseFloat(document.getElementById('odds2').value);
+    const strategy = document.getElementById('strategy').value;
+    const resultsBox = document.getElementById('results');
+
+    if (!budget || !odds1 || !odds2 || odds1 <= 1 || odds2 <= 1) {
+        resultsBox.style.display = 'none';
+        return;
+    }
+
+    const prob1 = 1 / odds1;
+    const prob2 = 1 / odds2;
+    const arbRatio = prob1 + prob2;
+
+    if (arbRatio >= 1.0) {
+        resultsBox.style.display = 'block';
+        document.getElementById('stake1').innerText = "No Arbitrage Available";
+        document.getElementById('stake2').innerText = "Market is Flat";
+        document.getElementById('profit1').innerText = "KES 0.00";
+        document.getElementById('profit2').innerText = "KES 0.00";
+        return;
+    }
+
+    let stake1 = 0;
+    let stake2 = 0;
+
+    if (strategy === "equal") {
+        stake1 = Math.round((budget * prob1) / arbRatio);
+        stake2 = Math.round((budget * prob2) / arbRatio);
+    } else if (strategy === "bias1") {
+        // Betika is set to exactly return the initial budget (Break Even)
+        stake2 = Math.round(budget / odds2);
+        stake1 = budget - stake2;
+    } else if (strategy === "bias2") {
+        // SportyBet is set to exactly return the initial budget (Break Even)
+        stake1 = Math.round(budget / odds1);
+        stake2 = budget - stake1;
+    }
+
+    const totalInvested = stake1 + stake2;
+    const netProfit1 = (stake1 * odds1) - totalInvested;
+    const netProfit2 = (stake2 * odds2) - totalInvested;
+
+    resultsBox.style.display = 'block';
+    document.getElementById('stake1').innerText = `KES ${stake1}`;
+    document.getElementById('stake2').innerText = `KES ${stake2}`;
+    
+    // Display dynamic returns based on user choice
+    document.getElementById('profit1').innerText = `KES ${netProfit1 >= 0 ? '+' : ''}${netProfit1.toFixed(2)} (${((netProfit1/totalInvested)*100).toFixed(2)}%)`;
+    document.getElementById('profit1').style.color = netProfit1 >= 0 ? "#4caf50" : "#ff9800";
+    
+    document.getElementById('profit2').innerText = `KES ${netProfit2 >= 0 ? '+' : ''}${netProfit2.toFixed(2)} (${((netProfit2/totalInvested)*100).toFixed(2)}%)`;
+    document.getElementById('profit2').style.color = netProfit2 >= 0 ? "#4caf50" : "#ff9800";
+}
+</script>
+
+</body>
+</html>
