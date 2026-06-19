@@ -3,151 +3,622 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Arb Advanced Strategy Calculator</title>
+    <title>Smart Arb - Premium Sports Arbitrage Calculator</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
     <style>
+        :root {
+            --bg-dark: #0a0c10;
+            --card-bg: rgba(18, 22, 30, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --primary: #ff9f1c;
+            --primary-glow: rgba(255, 159, 28, 0.15);
+            --secondary: #2ec4b6;
+            --secondary-glow: rgba(46, 196, 182, 0.15);
+            --success: #20bf55;
+            --success-glow: rgba(32, 191, 85, 0.2);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --glass-blur: 16px;
+        }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            background-color: #121212;
-            color: #e0e0e0;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: radial-gradient(circle at 50% 0%, #1e1b18 0%, var(--bg-dark) 70%);
+            color: var(--text-main);
+            min-height: 100vh;
+            margin: 0;
+            padding: 40px 20px;
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px;
+            box-sizing: border-box;
         }
-        .calculator-card {
-            background-color: #1e1e1e;
-            padding: 30px;
-            border-radius: 16px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+
+        .container {
             width: 100%;
-            max-width: 440px;
-            border: 1px solid #2d2d2d;
+            max-width: 1000px;
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr;
+            gap: 30px;
         }
-        h2 { text-align: center; color: #ff9800; margin-top: 0; }
-        p.subtitle { text-align: center; font-size: 14px; color: #888; margin-bottom: 25px; }
-        .input-group { margin-bottom: 18px; }
-        label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 600; color: #b0b0b0; }
+
+        @media (max-width: 850px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Glassmorphic Panel Styles */
+        .panel {
+            background: var(--card-bg);
+            backdrop-filter: blur(var(--glass-blur));
+            -webkit-backdrop-filter: blur(var(--glass-blur));
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 35px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .panel:hover {
+            box-shadow: 0 20px 50px rgba(255, 159, 28, 0.05);
+        }
+
+        .header {
+            text-align: center;
+            grid-column: 1 / -1;
+            margin-bottom: 10px;
+        }
+
+        .header h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin: 0;
+            background: linear-gradient(135deg, #fff 30%, var(--primary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 1rem;
+            margin-top: 8px;
+        }
+
+        h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-top: 0;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        h2 span {
+            color: var(--primary);
+        }
+
+        /* Form Controls */
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 500px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group.full-width {
+            grid-column: 1 / -1;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-muted);
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
         input, select {
-            width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #3d3d3d;
-            background-color: #2a2a2a; color: #fff; font-size: 16px; box-sizing: border-box;
+            width: 100%;
+            padding: 14px 14px 14px 35px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            background: rgba(30, 37, 50, 0.4);
+            color: #fff;
+            font-size: 1rem;
+            font-family: inherit;
+            box-sizing: border-box;
+            transition: all 0.25s ease;
         }
-        input:focus, select:focus { outline: none; border-color: #ff9800; }
-        
-        /* Dynamic Advisory Notification Feature Box */
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: rgba(30, 37, 50, 0.8);
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        select {
+            padding-left: 15px;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 14px center;
+            background-size: 16px;
+        }
+
+        /* Advisory Box */
         .advisory-box {
-            margin-top: 15px;
-            padding: 12px 15px;
-            background-color: #2b2214;
-            border-left: 4px solid #ff9800;
-            border-radius: 6px;
-            font-size: 13px;
-            color: #ffd59a;
+            grid-column: 1 / -1;
+            background: rgba(255, 159, 28, 0.08);
+            border-left: 4px solid var(--primary);
+            border-radius: 12px;
+            padding: 16px 20px;
+            font-size: 0.9rem;
+            color: #ffe8cc;
             line-height: 1.5;
             display: none;
+            margin-top: 10px;
         }
-        
-        .results-box {
-            margin-top: 25px; padding: 15px; background-color: #252525;
-            border-radius: 10px; border-left: 4px solid #4caf50; display: none;
+
+        /* Results Panel */
+        .results-panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
         }
-        .result-item { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 15px; }
-        .profit-highlight { font-weight: bold; color: #4caf50; }
+
+        .results-wrapper {
+            display: none;
+        }
+
+        .result-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .result-row:last-of-type {
+            border-bottom: none;
+        }
+
+        .result-label {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .result-value {
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: #fff;
+        }
+
+        .highlight-success {
+            color: var(--success) !important;
+            text-shadow: 0 0 10px var(--success-glow);
+        }
+
+        .total-profit-card {
+            background: linear-gradient(135deg, rgba(32, 191, 85, 0.15) 0%, rgba(46, 196, 182, 0.15) 100%);
+            border: 1px solid rgba(32, 191, 85, 0.25);
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .total-profit-title {
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--success);
+            margin-bottom: 5px;
+        }
+
+        .total-profit-val {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .effective-odds-badge {
+            font-size: 0.75rem;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 3px 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            margin-left: 8px;
+            color: var(--text-muted);
+        }
+
+        /* Feed / Simulated Opportunities */
+        .opportunities-section {
+            grid-column: 1 / -1;
+            margin-top: 20px;
+        }
+
+        .opportunities-section h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .opportunity-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .opportunity-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+
+        .opportunity-card:hover {
+            background: rgba(255, 159, 28, 0.03);
+            border-color: rgba(255, 159, 28, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .op-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .op-tag {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 6px;
+            text-transform: uppercase;
+        }
+
+        .op-tag.free {
+            background: rgba(46, 196, 182, 0.15);
+            color: var(--secondary);
+        }
+
+        .op-tag.premium {
+            background: rgba(255, 159, 28, 0.15);
+            color: var(--primary);
+        }
+
+        .op-yield {
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: var(--success);
+        }
+
+        .op-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 12px;
+            color: #fff;
+        }
+
+        .op-odds {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .op-odds span strong {
+            color: #fff;
+        }
+
+        /* Placeholders / Empty States */
+        .empty-results {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            min-height: 250px;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .empty-results svg {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 15px;
+            stroke: var(--text-muted);
+            opacity: 0.5;
+        }
+
+        /* Animated Pulsing Dot */
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--success);
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 0 0 rgba(32, 191, 85, 0.7);
+            animation: pulse 1.6s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(32, 191, 85, 0.7);
+            }
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 8px rgba(32, 191, 85, 0);
+            }
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(32, 191, 85, 0);
+            }
+        }
     </style>
 </head>
 <body>
 
-<div class="calculator-card">
-    <h2>🎯 Smart Arb Calculator</h2>
-    <p class="subtitle">Enter your details to generate your risk-free stakes.</p>
-    
-    <div class="input-group">
-        <label for="budget">Total Betting Stake (KES):</label>
-        <input type="number" id="budget" placeholder="e.g. 500" oninput="calculateStakes()">
-    </div>
-    
-    <div class="input-group">
-        <label for="odds1">SportyBet Odds (Outcome 1):</label>
-        <input type="number" step="0.01" id="odds1" placeholder="e.g. 2.10" oninput="calculateStakes()">
-    </div>
-    
-    <div class="input-group">
-        <label for="odds2">Betika Odds (Outcome 2):</label>
-        <input type="number" step="0.01" id="odds2" placeholder="e.g. 2.15" oninput="calculateStakes()">
+<div class="container">
+    <div class="header">
+        <h1>Smart Arb Calculator</h1>
+        <p>Advanced cross-market risk-free staking system</p>
     </div>
 
-    <div class="input-group">
-        <label for="strategy">Profit Distribution Plan:</label>
-        <select id="strategy" onchange="calculateStakes()">
-            <option value="equal">Equal Profit Split (Balanced Income)</option>
-            <option value="bias1">Maximize SportyBet (Betika Breaks Even)</option>
-            <option value="bias2">Maximize Betika (SportyBet Breaks Even)</option>
-        </select>
+    <!-- Inputs Panel -->
+    <div class="panel">
+        <h2><span>01</span> Calculation Settings</h2>
+        
+        <div class="form-grid">
+            <div class="input-group">
+                <label for="budget">Total Budget / Stake</label>
+                <div class="input-wrapper">
+                    <span class="input-icon">KES</span>
+                    <input type="number" id="budget" placeholder="e.g. 5000" oninput="calculateStakes()">
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label for="taxMode">Taxation Strategy</label>
+                <select id="taxMode" onchange="calculateStakes()">
+                    <option value="none">No Tax Deductions (Global)</option>
+                    <option value="ke20">Kenya Betting Tax (20% on Winnings)</option>
+                    <option value="custom10">Custom Betting Tax (10% on Winnings)</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="odds1">SportyBet Odds (Outcome 1)</label>
+                <div class="input-wrapper">
+                    <span class="input-icon">#</span>
+                    <input type="number" step="0.01" id="odds1" placeholder="e.g. 2.15" oninput="calculateStakes()">
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label for="odds2">Betika Odds (Outcome 2)</label>
+                <div class="input-wrapper">
+                    <span class="input-icon">#</span>
+                    <input type="number" step="0.01" id="odds2" placeholder="e.g. 2.20" oninput="calculateStakes()">
+                </div>
+            </div>
+
+            <div class="input-group full-width">
+                <label for="strategy">Staking Allocation Strategy</label>
+                <select id="strategy" onchange="calculateStakes()">
+                    <option value="equal">Equal Net Profit Distribution (Balanced)</option>
+                    <option value="bias1">Bias Outcome 1 (SportyBet maximizes, Betika breaks even)</option>
+                    <option value="bias2">Bias Outcome 2 (Betika maximizes, SportyBet breaks even)</option>
+                </select>
+            </div>
+
+            <div class="advisory-box" id="advisory"></div>
+        </div>
     </div>
 
-    <!-- Dynamic Recommended Stake Advisory Feature -->
-    <div class="advisory-box" id="advisory"></div>
+    <!-- Results Panel -->
+    <div class="panel results-panel">
+        <h2><span>02</span> Stake Distribution</h2>
 
-    <div class="results-box" id="results">
-        <div class="result-item">
-            <span>SportyBet Slip Stake:</span>
-            <span id="stake1" style="font-weight: bold;">KES 0</span>
+        <!-- Empty State -->
+        <div class="empty-results" id="emptyState">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0H5.25m13.5 0h1.5m-1.5 0H5.25" />
+            </svg>
+            <p>Enter a budget and decimal odds to calculate your guaranteed returns.</p>
         </div>
-        <div class="result-item">
-            <span>Betika Slip Stake:</span>
-            <span id="stake2" style="font-weight: bold;">KES 0</span>
+
+        <!-- Real Results Content -->
+        <div class="results-wrapper" id="resultsWrapper">
+            <div class="result-row">
+                <span class="result-label">SportyBet Slip (Outcome 1)</span>
+                <span class="result-value" id="stake1Val">KES 0</span>
+            </div>
+            
+            <div class="result-row">
+                <span class="result-label">Betika Slip (Outcome 2)</span>
+                <span class="result-value" id="stake2Val">KES 0</span>
+            </div>
+
+            <div class="result-row">
+                <span class="result-label">Effective Odds 1 <span class="effective-odds-badge" id="effOdds1">2.15</span></span>
+                <span class="result-label">Effective Odds 2 <span class="effective-odds-badge" id="effOdds2">2.20</span></span>
+            </div>
+
+            <div class="result-row">
+                <span class="result-label">Return Outcome 1 (Net)</span>
+                <span class="result-value highlight-success" id="profit1Val">KES 0</span>
+            </div>
+
+            <div class="result-row">
+                <span class="result-label">Return Outcome 2 (Net)</span>
+                <span class="result-value highlight-success" id="profit2Val">KES 0</span>
+            </div>
+
+            <div class="total-profit-card">
+                <div class="total-profit-title">Risk-Free Net Margin</div>
+                <div class="total-profit-val" id="profitMarginVal">0.00%</div>
+            </div>
         </div>
-        <hr style="border: 0; border-top: 1px solid #3d3d3d; margin: 12px 0;">
-        <div class="result-item">
-            <span>If Outcome 1 Hits:</span>
-            <span id="profit1" class="profit-highlight">KES 0</span>
-        </div>
-        <div class="result-item">
-            <span>If Outcome 2 Hits:</span>
-            <span id="profit2" class="profit-highlight">KES 0</span>
+    </div>
+
+    <!-- Live Signals / Opportunities Feed -->
+    <div class="opportunities-section">
+        <h3><span class="live-dot"></span> Live Arbitrage Feed (Click to Load)</h3>
+        <div class="opportunity-cards">
+            <!-- Card 1 -->
+            <div class="opportunity-card" onclick="loadOpportunity(5000, 2.15, 2.25, 'ke20')">
+                <div class="op-header">
+                    <span class="op-tag premium">Premium</span>
+                    <span class="op-yield">+8.61% Margin</span>
+                </div>
+                <div class="op-title">Manchester United vs Liverpool</div>
+                <div class="op-odds">
+                    <span>SportyBet: <strong>2.15</strong></span>
+                    <span>Betika: <strong>2.25</strong></span>
+                </div>
+            </div>
+            
+            <!-- Card 2 -->
+            <div class="opportunity-card" onclick="loadOpportunity(3000, 1.95, 2.30, 'none')">
+                <div class="op-header">
+                    <span class="op-tag free">Free Tier</span>
+                    <span class="op-yield">+5.49% Margin</span>
+                </div>
+                <div class="op-title">Real Madrid vs Barcelona</div>
+                <div class="op-odds">
+                    <span>SportyBet: <strong>1.95</strong></span>
+                    <span>Betika: <strong>2.30</strong></span>
+                </div>
+            </div>
+
+            <!-- Card 3 -->
+            <div class="opportunity-card" onclick="loadOpportunity(10000, 2.05, 2.15, 'ke20')">
+                <div class="op-header">
+                    <span class="op-tag premium">Premium</span>
+                    <span class="op-yield">+4.76% Margin</span>
+                </div>
+                <div class="op-title">Arsenal vs Chelsea</div>
+                <div class="op-odds">
+                    <span>SportyBet: <strong>2.05</strong></span>
+                    <span>Betika: <strong>2.15</strong></span>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
+function loadOpportunity(budget, odds1, odds2, taxMode) {
+    document.getElementById('budget').value = budget;
+    document.getElementById('odds1').value = odds1;
+    document.getElementById('odds2').value = odds2;
+    document.getElementById('taxMode').value = taxMode;
+    calculateStakes();
+}
+
 function calculateStakes() {
     const budget = parseFloat(document.getElementById('budget').value);
-    const odds1 = parseFloat(document.getElementById('odds1').value);
-    const odds2 = parseFloat(document.getElementById('odds2').value);
+    const odds1_raw = parseFloat(document.getElementById('odds1').value);
+    const odds2_raw = parseFloat(document.getElementById('odds2').value);
     const strategy = document.getElementById('strategy').value;
-    const resultsBox = document.getElementById('results');
+    const taxMode = document.getElementById('taxMode').value;
+
+    const emptyState = document.getElementById('emptyState');
+    const resultsWrapper = document.getElementById('resultsWrapper');
     const advisoryBox = document.getElementById('advisory');
 
-    if (!budget || !odds1 || !odds2 || odds1 <= 1 || odds2 <= 1) {
-        resultsBox.style.display = 'none';
+    if (!budget || !odds1_raw || !odds2_raw || odds1_raw <= 1 || odds2_raw <= 1) {
+        emptyState.style.display = 'flex';
+        resultsWrapper.style.display = 'none';
         advisoryBox.style.display = 'none';
         return;
     }
+
+    // Determine Tax Rate (on net winnings)
+    let taxRate = 0.0;
+    if (taxMode === 'ke20') {
+        taxRate = 0.20; // 20% Withholding Tax
+    } else if (taxMode === 'custom10') {
+        taxRate = 0.10; // 10% Withholding Tax
+    }
+
+    // Calculate Tax-Adjusted Effective Odds
+    // Effective Payout = Stake * ((Odds - 1) * (1 - TaxRate) + 1)
+    const odds1 = (odds1_raw - 1) * (1 - taxRate) + 1;
+    const odds2 = (odds2_raw - 1) * (1 - taxRate) + 1;
+
+    document.getElementById('effOdds1').innerText = odds1.toFixed(3);
+    document.getElementById('effOdds2').innerText = odds2.toFixed(3);
 
     const prob1 = 1 / odds1;
     const prob2 = 1 / odds2;
     const arbRatio = prob1 + prob2;
 
+    emptyState.style.display = 'none';
+    resultsWrapper.style.display = 'block';
+
     if (arbRatio >= 1.0) {
-        resultsBox.style.display = 'block';
+        document.getElementById('stake1Val').innerText = "No Arb Window";
+        document.getElementById('stake2Val').innerText = "Market Balanced";
+        document.getElementById('profit1Val').innerText = "KES 0.00 (0.0%)";
+        document.getElementById('profit2Val').innerText = "KES 0.00 (0.0%)";
+        document.getElementById('profitMarginVal').innerText = "0.00%";
+        document.getElementById('profitMarginVal').style.color = 'var(--text-muted)';
         advisoryBox.style.display = 'none';
-        document.getElementById('stake1').innerText = "No Arbitrage Window";
-        document.getElementById('stake2').innerText = "Market Balanced";
-        document.getElementById('profit1').innerText = "KES 0.00";
-        document.getElementById('profit2').innerText = "KES 0.00";
         return;
     }
 
-    // Dynamic Minimum Recommended Stake Advisory Logic Integration
     const currentMarginPercent = (1 - arbRatio) * 100;
-    const dailySubscriptionPassCost = 50; // KES 50 base overhead daily
-    
-    // Formula to find the breakdown budget baseline threshold
-    const minimumRecommendedStake = Math.ceil(dailySubscriptionPassCost / (currentMarginPercent / 100));
+    const dailyPassFee = 50.0; // KES 50 fee base overhead
+    const minimumRecommendedStake = Math.ceil(dailyPassFee / (currentMarginPercent / 100));
 
     if (budget < minimumRecommendedStake) {
-        advisoryBox.innerHTML = `💡 *Recommendation:* Based on this match's <b>${currentMarginPercent.toFixed(1)}%</b> profit margin and a KES 50 daily access cost, we recommend a total betting stake of at least <b>KES ${minimumRecommendedStake.toLocaleString()}</b> to fully cover your pass fee and lock in solid net profits today.`;
+        advisoryBox.innerHTML = `💡 <strong>Advisory recommendation:</strong> Based on this event's <strong>${currentMarginPercent.toFixed(2)}%</strong> net tax-adjusted profit margin and your daily VIP subscription cost of KES 50, you should consider a total betting stake of at least <strong>KES ${minimumRecommendedStake.toLocaleString()}</strong> to completely cover your overhead access fee and secure high net profits today.`;
         advisoryBox.style.display = 'block';
     } else {
         advisoryBox.style.display = 'none';
@@ -168,18 +639,24 @@ function calculateStakes() {
     }
 
     const totalInvested = stake1 + stake2;
+    
+    // Net profit after tax deductions: (Stake * EffectiveOdds) - TotalInvested
     const netProfit1 = (stake1 * odds1) - totalInvested;
     const netProfit2 = (stake2 * odds2) - totalInvested;
 
-    resultsBox.style.display = 'block';
-    document.getElementById('stake1').innerText = `KES ${stake1}`;
-    document.getElementById('stake2').innerText = `KES ${stake2}`;
+    document.getElementById('stake1Val').innerText = `KES ${stake1.toLocaleString()}`;
+    document.getElementById('stake2Val').innerText = `KES ${stake2.toLocaleString()}`;
     
-    document.getElementById('profit1').innerText = `KES ${netProfit1 >= 0 ? '+' : ''}${netProfit1.toFixed(2)} (${((netProfit1/totalInvested)*100).toFixed(2)}%)`;
-    document.getElementById('profit1').style.color = netProfit1 >= 0 ? "#4caf50" : "#ff9800";
+    document.getElementById('profit1Val').innerText = `KES ${netProfit1 >= 0 ? '+' : ''}${netProfit1.toFixed(2)} (${((netProfit1 / totalInvested) * 100).toFixed(2)}%)`;
+    document.getElementById('profit1Val').style.color = netProfit1 >= 0 ? 'var(--success)' : 'var(--primary)';
     
-    document.getElementById('profit2').innerText = `KES ${netProfit2 >= 0 ? '+' : ''}${netProfit2.toFixed(2)} (${((netProfit2/totalInvested)*100).toFixed(2)}%)`;
-    document.getElementById('profit2').style.color = netProfit2 >= 0 ? "#4caf50" : "#ff9800";
+    document.getElementById('profit2Val').innerText = `KES ${netProfit2 >= 0 ? '+' : ''}${netProfit2.toFixed(2)} (${((netProfit2 / totalInvested) * 100).toFixed(2)}%)`;
+    document.getElementById('profit2Val').style.color = netProfit2 >= 0 ? 'var(--success)' : 'var(--primary)';
+
+    const minNetProfit = Math.min(netProfit1, netProfit2);
+    const profitMargin = (minNetProfit / totalInvested) * 100;
+    document.getElementById('profitMarginVal').innerText = `${profitMargin >= 0 ? '+' : ''}${profitMargin.toFixed(2)}%`;
+    document.getElementById('profitMarginVal').style.color = profitMargin >= 0 ? 'var(--success)' : 'var(--primary)';
 }
 </script>
 

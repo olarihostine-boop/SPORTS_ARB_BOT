@@ -1,4 +1,7 @@
+
 playwright==1.49.1
 pandas==2.2.3
 python-dotenv==1.0.1
 asyncio==3.4.3
+
+
