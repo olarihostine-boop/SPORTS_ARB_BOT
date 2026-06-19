@@ -4,7 +4,6 @@ import asyncio
 import logging
 import httpx
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
 from dotenv import load_dotenv
 
 # Ingest all configurations from your local secure .env file
@@ -62,7 +61,7 @@ def run_arbitrage_engine(match_title: str, status: str, odds_1: float, odds_2: f
             return 
 
         # Extract your live hosted GitHub Pages calculator form domain URL link
-        calc_link = os.getenv('CALCULATOR_URL', 'https://github.io')
+        calc_link = os.getenv('CALCULATOR_URL', 'https://olarihostine-boop.github.io/SPORTS_ARB_BOT/')
         
         # --- ANONYMOUS SAAS FREEMIUM ROUTING CORE ---
         if margin_percent <= 4.0:
@@ -98,6 +97,9 @@ def run_arbitrage_engine(match_title: str, status: str, odds_1: float, odds_2: f
 async def scrape_full_spectrum_board(playwright, url: str, site_name: str) -> dict:
     """Layout-independent stealth web browser data scraper."""
     market_data = {}
+    browser = None
+    context = None
+    page = None
     try:
         browser = await playwright.chromium.launch(headless=True)
         context = await browser.new_context(
@@ -107,10 +109,6 @@ async def scrape_full_spectrum_board(playwright, url: str, site_name: str) -> di
             timezone_id="Africa/Nairobi"
         )
         page = await context.new_page()
-        
-        # Inject the active stealth script framework to mask navigator.webdriver flags
-        await stealth_async(page)
-        
         await page.goto(url, timeout=45000, wait_until="domcontentloaded")
         
         # Human Action Simulation: Subtle natural scrolling to clear advanced heuristics
@@ -119,7 +117,6 @@ async def scrape_full_spectrum_board(playwright, url: str, site_name: str) -> di
             await asyncio.sleep(random.uniform(0.5, 1.5))
             
         elements = await page.locator("div, row, button, a").all_inner_texts()
-        await browser.close()
         
         for block in elements:
             try:
@@ -149,41 +146,72 @@ async def scrape_full_spectrum_board(playwright, url: str, site_name: str) -> di
     except Exception as e:
         logging.error(f"Error parsing global sports feed for {site_name}: {e}")
         return {}
+    finally:
+        # Ensure proper cleanup of resources
+        if page:
+            try:
+                await page.close()
+            except:
+                pass
+        if context:
+            try:
+                await context.close()
+            except:
+                pass
+        if browser:
+            try:
+                await browser.close()
+            except:
+                pass
 
 
 async def runtime_loop():
     logging.info(f"Stealth Dual-Stream SaaS Engine Online and Initialized.")
     async with async_playwright() as playwright:
-        while True:
-            try:
-                tasks = [
-                    scrape_full_spectrum_board(playwright, BOOKMAKER_A_URL, "SportyBet"),
-                    scrape_full_spectrum_board(playwright, BOOKMAKER_B_URL, "Betika")
-                ]
-                sporty_matrix, betika_matrix = await asyncio.gather(*tasks)
-                
-                if not sporty_matrix or not betika_matrix:
-                    logging.info("Scanning full matrix... Markets balanced. (Waiting for adjustments)")
-                    await asyncio.sleep(BASE_SCAN_DELAY + random.uniform(2.0, 5.0))
-                    continue
-                
-                for match_key, sporty_item in sporty_matrix.items():
-                    if match_key in betika_matrix:
-                        betika_item = betika_matrix[match_key]
-                        status = sporty_item["status"]
-                        
-                        run_arbitrage_engine(sporty_item["title"], status, sporty_item["home_odds"], betika_item["away_odds"])
-                        run_arbitrage_engine(sporty_item["title"], status, betika_item["home_odds"], sporty_item["away_odds"])
-                        
-            except Exception as loop_error:
-                logging.error(f"Global processing loop exception handled: {loop_error}")
-                
-            dynamic_jitter = BASE_SCAN_DELAY + random.uniform(1.5, 6.0)
-            await asyncio.sleep(dynamic_jitter)
+        try:
+            while True:
+                try:
+                    tasks = [
+                        scrape_full_spectrum_board(playwright, BOOKMAKER_A_URL, "SportyBet"),
+                        scrape_full_spectrum_board(playwright, BOOKMAKER_B_URL, "Betika")
+                    ]
+                    sporty_matrix, betika_matrix = await asyncio.gather(*tasks)
+                    
+                    if not sporty_matrix or not betika_matrix:
+                        logging.info("Scanning full matrix... Markets balanced. (Waiting for adjustments)")
+                        await asyncio.sleep(BASE_SCAN_DELAY + random.uniform(2.0, 5.0))
+                        continue
+                    
+                    for match_key, sporty_item in sporty_matrix.items():
+                        if match_key in betika_matrix:
+                            betika_item = betika_matrix[match_key]
+                            status = sporty_item["status"]
+                            
+                            run_arbitrage_engine(sporty_item["title"], status, sporty_item["home_odds"], betika_item["away_odds"])
+                            run_arbitrage_engine(sporty_item["title"], status, betika_item["home_odds"], sporty_item["away_odds"])
+                            
+                except Exception as loop_error:
+                    logging.error(f"Global processing loop exception handled: {loop_error}")
+                    
+                dynamic_jitter = BASE_SCAN_DELAY + random.uniform(1.5, 6.0)
+                await asyncio.sleep(dynamic_jitter)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            logging.info("Gracefully shutting down async loop...")
+            raise
 
 
 if __name__ == "__main__":
+    import warnings
+    # Suppress ResourceWarning from asyncio cleanup on Windows
+    warnings.filterwarnings("ignore", category=ResourceWarning)
+    
     try:
         asyncio.run(runtime_loop())
     except KeyboardInterrupt:
         logging.info("SaaS tracking modules suspended.")
+    except Exception as e:
+        logging.error(f"Fatal error: {e}")
+    finally:
+        # Ensure all pending tasks are cleaned up on exit
+        if asyncio.get_event_loop().is_running():
+            asyncio.get_event_loop().stop()
