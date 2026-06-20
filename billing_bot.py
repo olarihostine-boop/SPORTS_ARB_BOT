@@ -399,12 +399,45 @@ async def poll_telegram():
         await asyncio.sleep(1)
 
 
+async def handle_health_check(reader, writer):
+    """Processes HTTP requests from Render to satisfy deployment health checks."""
+    try:
+        await reader.read(1024)
+        response = (
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/plain\r\n"
+            "Content-Length: 2\r\n"
+            "Connection: close\r\n\r\n"
+            "OK"
+        )
+        writer.write(response.encode())
+        await writer.drain()
+    except Exception as e:
+        logging.error(f"Health server error: {e}")
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
+async def start_health_server():
+    """Starts the basic web server on the port defined by Render ($PORT)."""
+    port = int(os.getenv("PORT", 8080))
+    try:
+        server = await asyncio.start_server(handle_health_check, '0.0.0.0', port)
+        logging.info(f"Render health check server online on port {port}")
+        async with server:
+            await server.serve_forever()
+    except Exception as e:
+        logging.error(f"Failed to start health check server: {e}")
+
+
 async def main():
     init_db()
-    # Run Telegram listener and Auto-expiration checker concurrently
+    # Run Telegram listener, Auto-expiration checker, and Render Health server concurrently
     await asyncio.gather(
         poll_telegram(),
-        auto_expiration_worker()
+        auto_expiration_worker(),
+        start_health_server()
     )
 
 
