@@ -1,9 +1,11 @@
 import os
+import random
+import asyncio
+import logging
 import time
 import sqlite3
-import logging
-import asyncio
 import httpx
+from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 
 # Ingest all configurations from your local secure .env file
@@ -11,13 +13,23 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - [%(levelname)s] - %(message)s")
 
+# --- CONFIGURATIONS ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 PREMIUM_CHANNEL_ID = os.getenv("PREMIUM_CHANNEL_ID")
+FREE_CHANNEL_ID = os.getenv("FREE_CHANNEL_ID")
 PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY")
+
+BOOKMAKER_A_URL = os.getenv("BOOKMAKER_A_URL")
+BOOKMAKER_B_URL = os.getenv("BOOKMAKER_B_URL")
+BASE_SCAN_DELAY = int(os.getenv("SCAN_DELAY_SECONDS", 10))
 
 PRICE_1DAY = float(os.getenv("SUBSCRIPTION_PRICE_1DAY", 50.0))
 PRICE_30DAY = float(os.getenv("SUBSCRIPTION_PRICE_30DAY", 500.0))
 
+
+# ==========================================
+# PART 1: DATABASE & AUXILIARY HELPERS
+# ==========================================
 
 def init_db():
     """Initializes the database schemas for subscription and transaction tracking."""
@@ -107,6 +119,249 @@ async def generate_invite_link(user_id: int) -> str:
     return None
 
 
+async def transmit_telegram_broadcast(target_chat_id: str, message: str):
+    """Dispatches arbitrage signal payload to specific channel nodes anonymously."""
+    if not TELEGRAM_BOT_TOKEN or not target_chat_id:
+        logging.warning("Telegram routing properties missing. Broadcast bypassed.")
+        return
+    
+    endpoint = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": target_chat_id,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(endpoint, json=payload, timeout=12)
+            if response.status_code == 200:
+                logging.info(f"✅ Success: Dispatched broadcast data to channel gateway: {target_chat_id}")
+            else:
+                logging.error(f"Telegram transmission rejected: {response.text}")
+    except Exception as e:
+        logging.error(f"Telegram communication latency error: {e}")
+
+
+# ==========================================
+# PART 2: ARBITRAGE SCANNER ENGINE (bot.py)
+# ==========================================
+
+async def run_arbitrage_engine(match_title: str, status: str, odds_1: float, odds_2: float):
+    """Computes cross-market probabilities and routes signals based on value metrics."""
+    prob_1 = 1 / odds_1
+    prob_2 = 1 / odds_2
+    arbitrage_ratio = prob_1 + prob_2
+
+    if arbitrage_ratio < 1.0:
+        margin_percent = (1 - arbitrage_ratio) * 100
+        
+        # Guard filters against manual typos or unhedged pricing adjustments
+        if margin_percent > 20.0 or margin_percent < 1.5:
+            return 
+
+        calc_link = os.getenv('CALCULATOR_URL', 'https://olarihostine-boop.github.io/SPORTS_ARB_BOT/')
+        
+        if margin_percent <= 4.0:
+            free_msg = (
+                f"🆓 *DAILY FREE COUPLING PICK* 🆓\n"
+                f"Status: `{status.upper()}`\n\n"
+                f"🏆 *Match:* `{match_title}`\n"
+                f"📈 *Guaranteed Profit Yield:* `+{margin_percent:.2f}%` risk-free\n\n"
+                f"👉 *SportyBet Odds (Outcome 1):* `{odds_1:.2f}`\n"
+                f"👉 *Betika Odds (Outcome 2):* `{odds_2:.2f}`\n\n"
+                f"🧮 *Verify Math or Calculate Stakes For Free Here:* {calc_link}\n\n"
+                f"🔥 _Want high-yield 5% to 20% premium signals all day? Unlock VIP inside our shop:_ @Your_Billing_Bot"
+            )
+            await transmit_telegram_broadcast(FREE_CHANNEL_ID, free_msg)
+            
+        else:
+            premium_msg = (
+                f"👑 *PREMIUM VIP HIGH-YIELD SIGNAL* 👑\n"
+                f"Status: `{status.upper()}`\n\n"
+                f"🏆 *Match:* `{match_title}`\n"
+                f"📈 *Guaranteed Premium Yield:* `+{margin_percent:.2f}%` risk-free\n\n"
+                f"👉 *SportyBet Odds (Outcome 1):* `{odds_1:.2f}`\n"
+                f"👉 *Betika Odds (Outcome 2):* `{odds_2:.2f}`\n\n"
+                f"🧮 *Calculate Your Stakes Instantly:* {calc_link}"
+            )
+            await transmit_telegram_broadcast(PREMIUM_CHANNEL_ID, premium_msg)
+            
+        print(f"\n[+] Executed System Distribution: {match_title} | Yield: {margin_percent:.2f}%")
+
+
+def matches_are_same(title_a: str, title_b: str) -> bool:
+    """Checks if two match titles refer to the same event by analyzing team names."""
+    delims = [" vs ", " - "]
+    parts_a, parts_b = None, None
+    for delim in delims:
+        if delim in title_a.lower():
+            parts_a = title_a.lower().split(delim)
+        if delim in title_b.lower():
+            parts_b = title_b.lower().split(delim)
+            
+    if not parts_a or not parts_b or len(parts_a) != 2 or len(parts_b) != 2:
+        return False
+        
+    team_a1, team_a2 = parts_a[0].strip(), parts_a[1].strip()
+    team_b1, team_b2 = parts_b[0].strip(), parts_b[1].strip()
+    
+    def team_match(t1: str, t2: str) -> bool:
+        if t1 == t2 or t1 in t2 or t2 in t1:
+            return True
+        abbrevs = {"man": "manchester", "utd": "united", "fc": "", "afc": "", "real": ""}
+        def clean_words(t):
+            w_list = []
+            for w in t.split():
+                w = w.replace(".", "")
+                if w in abbrevs:
+                    if abbrevs[w]:
+                        w_list.append(abbrevs[w])
+                elif w not in ["fc", "afc", "club", "de", "sports", "sport", "sv", "sc"]:
+                    w_list.append(w)
+            return set(w_list)
+            
+        cw1 = clean_words(t1)
+        cw2 = clean_words(t2)
+        if not cw1 or not cw2:
+            return t1 == t2
+        return len(cw1.intersection(cw2)) >= min(len(cw1), len(cw2), 1)
+        
+    return (team_match(team_a1, team_b1) and team_match(team_a2, team_b2)) or \
+           (team_match(team_a1, team_b2) and team_match(team_a2, team_b1))
+
+
+async def scrape_full_spectrum_board(browser, url: str, site_name: str) -> dict:
+    """Layout-independent stealth web browser data scraper reusing warm browser."""
+    context = None
+    try:
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            viewport={"width": random.randint(1366, 1440), "height": random.randint(768, 900)},
+            locale="en-KE",
+            timezone_id="Africa/Nairobi"
+        )
+        page = await context.new_page()
+        page.set_default_timeout(35000)
+        await page.goto(url, timeout=45000, wait_until="domcontentloaded")
+        
+        # Subtle natural scrolling to clear advanced heuristics
+        for _ in range(random.randint(1, 2)):
+            await page.mouse.wheel(0, random.randint(200, 400))
+            await asyncio.sleep(random.uniform(0.4, 0.9))
+            
+        # Fast browser-side JS DOM parsing in V8 engine
+        market_data = await page.evaluate("""() => {
+            const marketData = {};
+            const elements = document.querySelectorAll('div, tr, a');
+            for (const el of elements) {
+                try {
+                    const blockText = el.innerText;
+                    if (!blockText || !blockText.includes(' vs ')) continue;
+                    
+                    const lines = blockText.split('\\n').map(l => l.trim()).filter(Boolean);
+                    if (lines.length === 0) continue;
+                    
+                    const teamsList = lines.filter(l => l.toLowerCase().includes(' vs '));
+                    if (teamsList.length === 0) continue;
+                    
+                    const oddsList = [];
+                    for (const line of lines) {
+                        const cleanLine = line.replace(',', '.');
+                        if (/^\\d+(\\.\\d+)?$/.test(cleanLine)) {
+                            const val = parseFloat(cleanLine);
+                            if (val > 1.05 && val < 25.0) {
+                                oddsList.push(val);
+                            }
+                        }
+                    }
+                    
+                    if (oddsList.length >= 2) {
+                        const matchTitle = teamsList[0];
+                        const matchKey = matchTitle.toLowerCase().replace(/\\s+/g, '').replace('vs', 'vs');
+                        
+                        const isLive = lines.some(l => l.toLowerCase().includes('live') || l.includes("'"));
+                        const statusLabel = isLive ? "Live" : "Upcoming";
+                        
+                        const homeOdds = oddsList[0];
+                        const awayOdds = oddsList[oddsList.length - 1];
+                        
+                        marketData[matchKey] = {
+                            title: matchTitle,
+                            home_odds: homeOdds,
+                            away_odds: awayOdds,
+                            status: statusLabel
+                        };
+                    }
+                } catch (e) {}
+            }
+            return marketData;
+        }""")
+        return market_data
+    except Exception as e:
+        logging.error(f"Error parsing global sports feed for {site_name}: {e}")
+        return {}
+    finally:
+        if context:
+            await context.close()
+
+
+async def runtime_loop():
+    """Continuous loop running scraper checks for arbitrage windows using warm browser."""
+    logging.info(f"Stealth Scraper Loop Initialized (Warm Browser).")
+    async with async_playwright() as playwright:
+        # Optimized launch arguments to minimize RAM/CPU usage on Render's Free tier
+        browser = await playwright.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--single-process",
+                "--disable-extensions"
+            ]
+        )
+        try:
+            while True:
+                try:
+                    tasks = [
+                        scrape_full_spectrum_board(browser, BOOKMAKER_A_URL, "SportyBet"),
+                        scrape_full_spectrum_board(browser, BOOKMAKER_B_URL, "Betika")
+                    ]
+                    sporty_matrix, betika_matrix = await asyncio.gather(*tasks)
+                    
+                    if not sporty_matrix or not betika_matrix:
+                        logging.info("Scanning full matrix... Markets balanced. (Waiting for adjustments)")
+                        await asyncio.sleep(BASE_SCAN_DELAY + random.uniform(2.0, 5.0))
+                        continue
+                    
+                    for sporty_key, sporty_item in sporty_matrix.items():
+                        betika_item = None
+                        if sporty_key in betika_matrix:
+                            betika_item = betika_matrix[sporty_key]
+                        else:
+                            for betika_key, item in betika_matrix.items():
+                                if matches_are_same(sporty_item["title"], item["title"]):
+                                    betika_item = item
+                                    break
+                                    
+                        if betika_item:
+                            status = sporty_item["status"]
+                            await run_arbitrage_engine(sporty_item["title"], status, sporty_item["home_odds"], betika_item["away_odds"])
+                            await run_arbitrage_engine(sporty_item["title"], status, betika_item["home_odds"], sporty_item["away_odds"])
+                            
+                except Exception as loop_error:
+                    logging.error(f"Global processing loop exception handled: {loop_error}")
+                    
+                dynamic_jitter = BASE_SCAN_DELAY + random.uniform(1.5, 6.0)
+                await asyncio.sleep(dynamic_jitter)
+        finally:
+            await browser.close()
+
+
+# ==========================================
+# PART 3: AUTOMATED BILLING MODULES (Paystack)
+# ==========================================
+
 async def trigger_mpesa_stk_push(user_id: int, phone: str, amount_kes: float, plan: str) -> dict:
     """Triggers an M-Pesa STK push via Paystack's charge API."""
     url = "https://api.paystack.co/charge"
@@ -116,7 +371,7 @@ async def trigger_mpesa_stk_push(user_id: int, phone: str, amount_kes: float, pl
     }
     payload = {
         "email": f"subscriber_{user_id}@nexusdigital.com",
-        "amount": int(amount_kes * 100),  # Paystack expects KES cents/subunits
+        "amount": int(amount_kes * 100),
         "mobile_money": {
             "phone": phone,
             "provider": "mpesa"
@@ -137,7 +392,7 @@ async def trigger_mpesa_stk_push(user_id: int, phone: str, amount_kes: float, pl
 
 async def verify_transaction_task(user_id: int, reference: str, amount_kes: float, plan: str, username: str):
     """Background task to poll Paystack verification endpoint until status updates."""
-    max_attempts = 20  # 20 attempts * 3 seconds = 60 seconds (STK prompts expire after 60s)
+    max_attempts = 20
     url = f"https://api.paystack.co/transaction/verify/{reference}"
     headers = {"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"}
     
@@ -153,7 +408,6 @@ async def verify_transaction_task(user_id: int, reference: str, amount_kes: floa
                     if res.get("status") is True:
                         status = res["data"]["status"]
                         if status == "success":
-                            # Payment Successful!
                             duration = 86400 if plan == "1day" else 30 * 86400
                             expires_at = time.time() + duration
                             
@@ -194,7 +448,6 @@ async def verify_transaction_task(user_id: int, reference: str, amount_kes: floa
         except Exception as e:
             logging.error(f"Error checking transaction {reference}: {e}")
             
-    # Timeout
     conn = sqlite3.connect("subscriptions.db")
     cursor = conn.cursor()
     cursor.execute("UPDATE transactions SET status = 'failed' WHERE reference = ?", (reference,))
@@ -205,14 +458,12 @@ async def verify_transaction_task(user_id: int, reference: str, amount_kes: floa
 
 async def handle_update(update: dict):
     """Processes incoming Telegram messages and button callback queries."""
-    # Handle Button Clicks (Callback Queries)
     if "callback_query" in update:
         cq = update["callback_query"]
         user_id = cq["from"]["id"]
         username = cq["from"].get("username", "User")
         data = cq["data"]
         
-        # Clear loading animation in user's Telegram client
         ans_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery"
         async with httpx.AsyncClient() as client:
             await client.post(ans_url, json={"callback_query_id": cq["id"]})
@@ -220,7 +471,6 @@ async def handle_update(update: dict):
         if data in ["plan_1day", "plan_30day"]:
             plan = "1day" if data == "plan_1day" else "30day"
             
-            # Save user state
             conn = sqlite3.connect("subscriptions.db")
             cursor = conn.cursor()
             cursor.execute("INSERT OR REPLACE INTO user_states (user_id, state, plan) VALUES (?, ?, ?)",
@@ -238,7 +488,6 @@ async def handle_update(update: dict):
             )
         return
 
-    # Handle Text Messages
     if "message" in update:
         msg = update["message"]
         user_id = msg["chat"]["id"]
@@ -249,14 +498,12 @@ async def handle_update(update: dict):
             return
             
         if text.startswith("/start") or text.startswith("/subscribe"):
-            # Clear any active state
             conn = sqlite3.connect("subscriptions.db")
             cursor = conn.cursor()
             cursor.execute("DELETE FROM user_states WHERE user_id = ?", (user_id,))
             conn.commit()
             conn.close()
             
-            # Send subscription options
             welcome_msg = (
                 f"👋 *Welcome to Nexus Digital Arbitrage Billing Portal!*\n\n"
                 f"Get guaranteed risk-free sports betting arbitrage alerts delivered to your phone.\n"
@@ -271,7 +518,6 @@ async def handle_update(update: dict):
             await send_telegram_message(user_id, welcome_msg, keyboard)
             return
             
-        # Check User State
         conn = sqlite3.connect("subscriptions.db")
         cursor = conn.cursor()
         cursor.execute("SELECT state, plan FROM user_states WHERE user_id = ?", (user_id,))
@@ -282,7 +528,6 @@ async def handle_update(update: dict):
             plan = state_row[1]
             amount = PRICE_1DAY if plan == "1day" else PRICE_30DAY
             
-            # Reset state
             conn = sqlite3.connect("subscriptions.db")
             cursor = conn.cursor()
             cursor.execute("DELETE FROM user_states WHERE user_id = ?", (user_id,))
@@ -290,7 +535,6 @@ async def handle_update(update: dict):
             conn.close()
             
             phone = normalize_phone(text)
-            # Basic validation
             if len(phone) < 12:
                 await send_telegram_message(
                     user_id, 
@@ -300,13 +544,10 @@ async def handle_update(update: dict):
                 
             await send_telegram_message(user_id, "⌛ *Initiating M-Pesa payment...* Please wait.")
             
-            # Trigger STK Push
             res = await trigger_mpesa_stk_push(user_id, phone, amount, plan)
             if res and res.get("status") is True:
-                # Paystack returns 'pending' status for mobile money charge initiation
                 reference = res["data"]["reference"]
                 
-                # Log transaction
                 conn = sqlite3.connect("subscriptions.db")
                 cursor = conn.cursor()
                 cursor.execute("INSERT INTO transactions (reference, user_id, phone, amount, plan, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -321,7 +562,6 @@ async def handle_update(update: dict):
                     f"Enter your M-Pesa PIN to complete the purchase. Your channel access link will be sent here automatically."
                 )
                 
-                # Start polling Paystack status in background
                 asyncio.create_task(verify_transaction_task(user_id, reference, amount, plan, username))
             else:
                 await send_telegram_message(
@@ -341,7 +581,6 @@ async def auto_expiration_worker():
             expired_users = cursor.fetchall()
             
             for user_id, username in expired_users:
-                # Kick (ban) user to remove from channel
                 ban_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/banChatMember"
                 ban_payload = {
                     "chat_id": PREMIUM_CHANNEL_ID,
@@ -351,7 +590,6 @@ async def auto_expiration_worker():
                 async with httpx.AsyncClient() as client:
                     await client.post(ban_url, json=ban_payload)
                     
-                    # Unban immediately so they can rejoin later if they purchase another subscription
                     unban_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/unbanChatMember"
                     unban_payload = {
                         "chat_id": PREMIUM_CHANNEL_ID,
@@ -360,7 +598,6 @@ async def auto_expiration_worker():
                     }
                     await client.post(unban_url, json=unban_payload)
                     
-                # Update DB
                 cursor.execute("UPDATE subscriptions SET status = 'expired' WHERE user_id = ?", (user_id,))
                 conn.commit()
                 
@@ -374,7 +611,6 @@ async def auto_expiration_worker():
         except Exception as e:
             logging.error(f"Error in auto-expiration worker: {e}")
             
-        # Check every 10 minutes
         await asyncio.sleep(600)
 
 
@@ -431,13 +667,19 @@ async def start_health_server():
         logging.error(f"Failed to start health check server: {e}")
 
 
+# ==========================================
+# PART 4: MAIN STARTUP ENTRYPOINT
+# ==========================================
+
 async def main():
     init_db()
-    # Run Telegram listener, Auto-expiration checker, and Render Health server concurrently
+    # Concurrently run the Telegram poller, Subscription expiration checker,
+    # Render health server, AND the Arbitrage Scraper loop!
     await asyncio.gather(
         poll_telegram(),
         auto_expiration_worker(),
-        start_health_server()
+        start_health_server(),
+        runtime_loop()
     )
 
 
@@ -445,6 +687,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logging.info("Billing modules suspended.")
+        logging.info("Core system modules suspended.")
     except Exception as e:
         logging.error(f"Fatal execution crash: {e}")
