@@ -5,6 +5,7 @@ import logging
 import time
 import sqlite3
 import httpx
+import json
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 
@@ -23,8 +24,16 @@ BOOKMAKER_A_URL = os.getenv("BOOKMAKER_A_URL")
 BOOKMAKER_B_URL = os.getenv("BOOKMAKER_B_URL")
 BASE_SCAN_DELAY = int(os.getenv("SCAN_DELAY_SECONDS", 10))
 
-PRICE_1DAY = float(os.getenv("SUBSCRIPTION_PRICE_1DAY", 50.0))
-PRICE_30DAY = float(os.getenv("SUBSCRIPTION_PRICE_30DAY", 500.0))
+PRICE_6HOUR = float(os.getenv("SUBSCRIPTION_PRICE_6HOUR", 20.0))
+PRICE_24HOUR = float(os.getenv("SUBSCRIPTION_PRICE_24HOUR", 50.0))
+PRICE_7DAY = float(os.getenv("SUBSCRIPTION_PRICE_7DAY", 300.0))
+PRICE_30DAY = float(os.getenv("SUBSCRIPTION_PRICE_30DAY", 1000.0))
+
+# Global memory cache for live scraped matches to serve via the web page API
+LATEST_SCRAPED_FEEDS = {}
+
+# Cached Telegram Bot Username fetched dynamically at startup
+BOT_USERNAME = "Your_Billing_Bot"
 
 
 # ==========================================
@@ -170,7 +179,7 @@ async def run_arbitrage_engine(match_title: str, status: str, odds_1: float, odd
                 f"👉 *SportyBet Odds (Outcome 1):* `{odds_1:.2f}`\n"
                 f"👉 *Betika Odds (Outcome 2):* `{odds_2:.2f}`\n\n"
                 f"🧮 *Verify Math or Calculate Stakes For Free Here:* {calc_link}\n\n"
-                f"🔥 _Want high-yield 5% to 20% premium signals all day? Unlock VIP inside our shop:_ @Your_Billing_Bot"
+                f"🔥 _Want high-yield 5% to 20% premium signals all day? Unlock VIP inside our shop:_ @{BOT_USERNAME}"
             )
             await transmit_telegram_broadcast(FREE_CHANNEL_ID, free_msg)
             
@@ -334,6 +343,7 @@ async def runtime_loop():
                         await asyncio.sleep(BASE_SCAN_DELAY + random.uniform(2.0, 5.0))
                         continue
                     
+                    temp_feeds = {}
                     for sporty_key, sporty_item in sporty_matrix.items():
                         betika_item = None
                         if sporty_key in betika_matrix:
@@ -346,9 +356,34 @@ async def runtime_loop():
                                     
                         if betika_item:
                             status = sporty_item["status"]
-                            await run_arbitrage_engine(sporty_item["title"], status, sporty_item["home_odds"], betika_item["away_odds"])
+                            odds1 = sporty_item["home_odds"]
+                            odds2 = betika_item["away_odds"]
+                            
+                            # Check SportyBet home win vs Betika away win
+                            await run_arbitrage_engine(sporty_item["title"], status, odds1, odds2)
+                            # Check Betika home win vs SportyBet away win
                             await run_arbitrage_engine(sporty_item["title"], status, betika_item["home_odds"], sporty_item["away_odds"])
                             
+                            # Calculate current yield/margin for web page display
+                            prob_1 = 1 / odds1
+                            prob_2 = 1 / odds2
+                            ratio = prob_1 + prob_2
+                            margin = (1 - ratio) * 100 if ratio < 1.0 else -((ratio - 1) * 100)
+                            
+                            temp_feeds[sporty_key] = {
+                                "title": sporty_item["title"],
+                                "status": status,
+                                "odds1": odds1,
+                                "odds2": odds2,
+                                "margin": round(margin, 2),
+                                "is_arb": ratio < 1.0
+                            }
+                    
+                    # Update global feed in memory
+                    global LATEST_SCRAPED_FEEDS
+                    LATEST_SCRAPED_FEEDS = temp_feeds
+                    logging.info(f"Scrape completed successfully. Cached {len(temp_feeds)} active match pairings.")
+                    
                 except Exception as loop_error:
                     logging.error(f"Global processing loop exception handled: {loop_error}")
                     
@@ -408,7 +443,14 @@ async def verify_transaction_task(user_id: int, reference: str, amount_kes: floa
                     if res.get("status") is True:
                         status = res["data"]["status"]
                         if status == "success":
-                            duration = 86400 if plan == "1day" else 30 * 86400
+                            plan_durations = {
+                                "6hour": 6 * 3600,
+                                "24hour": 24 * 3600,
+                                "1day": 24 * 3600,  # support legacy/fallback
+                                "7day": 7 * 86400,
+                                "30day": 30 * 86400
+                            }
+                            duration = plan_durations.get(plan, 24 * 3600)
                             expires_at = time.time() + duration
                             
                             conn = sqlite3.connect("subscriptions.db")
@@ -458,6 +500,18 @@ async def verify_transaction_task(user_id: int, reference: str, amount_kes: floa
 
 async def handle_update(update: dict):
     """Processes incoming Telegram messages and button callback queries."""
+    # Channel post helper to easily discover channel IDs
+    if "channel_post" in update:
+        post = update["channel_post"]
+        chat = post.get("chat", {})
+        chat_id = chat.get("id")
+        text = post.get("text", "").strip()
+        
+        logging.info(f"📢 Channel Post in '{chat.get('title')}' (ID: {chat_id}) | Text: '{text}'")
+        if text.startswith("/id"):
+            await send_telegram_message(chat_id, f"🔑 *This Channel's ID is:* `{chat_id}`")
+        return
+
     if "callback_query" in update:
         cq = update["callback_query"]
         user_id = cq["from"]["id"]
@@ -468,8 +522,8 @@ async def handle_update(update: dict):
         async with httpx.AsyncClient() as client:
             await client.post(ans_url, json={"callback_query_id": cq["id"]})
             
-        if data in ["plan_1day", "plan_30day"]:
-            plan = "1day" if data == "plan_1day" else "30day"
+        if data in ["plan_6hour", "plan_24hour", "plan_7day", "plan_30day"]:
+            plan = data.replace("plan_", "")
             
             conn = sqlite3.connect("subscriptions.db")
             cursor = conn.cursor()
@@ -478,8 +532,20 @@ async def handle_update(update: dict):
             conn.commit()
             conn.close()
             
-            plan_label = "1-Day VIP Pass" if plan == "1day" else "30-Day VIP Pass"
-            price = PRICE_1DAY if plan == "1day" else PRICE_30DAY
+            plan_labels = {
+                "6hour": "6-Hour VIP Pass",
+                "24hour": "24-Hour VIP Pass",
+                "7day": "7-Day VIP Pass",
+                "30day": "30-Day VIP Pass"
+            }
+            plan_prices = {
+                "6hour": PRICE_6HOUR,
+                "24hour": PRICE_24HOUR,
+                "7day": PRICE_7DAY,
+                "30day": PRICE_30DAY
+            }
+            plan_label = plan_labels.get(plan, f"{plan} VIP Pass")
+            price = plan_prices.get(plan, 50.0)
             
             await send_telegram_message(
                 user_id,
@@ -497,6 +563,10 @@ async def handle_update(update: dict):
         if not text:
             return
             
+        if text.startswith("/id"):
+            await send_telegram_message(user_id, f"🔑 *Your Chat ID is:* `{user_id}`\n🌐 *Chat Type:* `{msg['chat'].get('type')}`")
+            return
+
         if text.startswith("/start") or text.startswith("/subscribe"):
             conn = sqlite3.connect("subscriptions.db")
             cursor = conn.cursor()
@@ -511,7 +581,9 @@ async def handle_update(update: dict):
             )
             keyboard = {
                 "inline_keyboard": [
-                    [{"text": f"🎟️ 1-Day VIP Pass (KES {PRICE_1DAY:.0f})", "callback_data": "plan_1day"}],
+                    [{"text": f"⚡ 6-Hour VIP Pass (KES {PRICE_6HOUR:.0f})", "callback_data": "plan_6hour"}],
+                    [{"text": f"🎟️ 24-Hour VIP Pass (KES {PRICE_24HOUR:.0f})", "callback_data": "plan_24hour"}],
+                    [{"text": f"📅 7-Day VIP Pass (KES {PRICE_7DAY:.0f})", "callback_data": "plan_7day"}],
                     [{"text": f"👑 30-Day VIP Pass (KES {PRICE_30DAY:.0f})", "callback_data": "plan_30day"}]
                 ]
             }
@@ -526,7 +598,13 @@ async def handle_update(update: dict):
         
         if state_row and state_row[0] == "AWAITING_PHONE":
             plan = state_row[1]
-            amount = PRICE_1DAY if plan == "1day" else PRICE_30DAY
+            plan_prices = {
+                "6hour": PRICE_6HOUR,
+                "24hour": PRICE_24HOUR,
+                "7day": PRICE_7DAY,
+                "30day": PRICE_30DAY
+            }
+            amount = plan_prices.get(plan, 50.0)
             
             conn = sqlite3.connect("subscriptions.db")
             cursor = conn.cursor()
@@ -636,20 +714,40 @@ async def poll_telegram():
 
 
 async def handle_health_check(reader, writer):
-    """Processes HTTP requests from Render to satisfy deployment health checks."""
+    """Processes HTTP requests from Render to satisfy deployment health checks or serve live match JSON feed."""
     try:
-        await reader.read(1024)
-        response = (
-            "HTTP/1.1 200 OK\r\n"
-            "Content-Type: text/plain\r\n"
-            "Content-Length: 2\r\n"
-            "Connection: close\r\n\r\n"
-            "OK"
-        )
+        request_data = await reader.read(1024)
+        request_text = request_data.decode(errors="ignore")
+        lines = request_text.split("\r\n")
+        path = "/"
+        if lines:
+            parts = lines[0].split()
+            if len(parts) >= 2:
+                path = parts[1]
+                
+        if path == "/api/feed":
+            # Return live scraper data with CORS headers enabled
+            feed_json = json.dumps(list(LATEST_SCRAPED_FEEDS.values()))
+            response = (
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: application/json\r\n"
+                "Access-Control-Allow-Origin: *\r\n"
+                f"Content-Length: {len(feed_json.encode())}\r\n"
+                "Connection: close\r\n\r\n"
+                f"{feed_json}"
+            )
+        else:
+            response = (
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: text/plain\r\n"
+                "Content-Length: 2\r\n"
+                "Connection: close\r\n\r\n"
+                "OK"
+            )
         writer.write(response.encode())
         await writer.drain()
     except Exception as e:
-        logging.error(f"Health server error: {e}")
+        logging.error(f"Health/API server error: {e}")
     finally:
         writer.close()
         await writer.wait_closed()
@@ -660,7 +758,7 @@ async def start_health_server():
     port = int(os.getenv("PORT", 8080))
     try:
         server = await asyncio.start_server(handle_health_check, '0.0.0.0', port)
-        logging.info(f"Render health check server online on port {port}")
+        logging.info(f"Render health check & API server online on port {port}")
         async with server:
             await server.serve_forever()
     except Exception as e:
@@ -671,8 +769,31 @@ async def start_health_server():
 # PART 4: MAIN STARTUP ENTRYPOINT
 # ==========================================
 
+async def fetch_bot_username():
+    """Queries Telegram's getMe endpoint to fetch and cache the bot username dynamically."""
+    global BOT_USERNAME
+    if not TELEGRAM_BOT_TOKEN:
+        logging.warning("TELEGRAM_BOT_TOKEN is missing. Bot username fallback: @Your_Billing_Bot")
+        return
+        
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getMe"
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, timeout=10)
+            if resp.status_code == 200:
+                res = resp.json()
+                if res.get("ok"):
+                    BOT_USERNAME = res["result"]["username"]
+                    logging.info(f"🤖 Dynamic Bot Handle Initialized: @{BOT_USERNAME}")
+                    return
+            logging.warning(f"Telegram getMe call failed: {resp.text}. Using fallback username.")
+    except Exception as e:
+        logging.error(f"Failed to fetch bot username: {e}. Using fallback username.")
+
+
 async def main():
     init_db()
+    await fetch_bot_username()
     # Concurrently run the Telegram poller, Subscription expiration checker,
     # Render health server, AND the Arbitrage Scraper loop!
     await asyncio.gather(
