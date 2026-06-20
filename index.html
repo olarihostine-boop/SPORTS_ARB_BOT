@@ -644,33 +644,46 @@ async function fetchLiveFeed() {
                 connStatus.style.color = "var(--success)";
                 
                 cardsContainer.innerHTML = "";
-                data.forEach(item => {
-                    const card = document.createElement("div");
-                    card.className = "opportunity-card";
-                    card.onclick = () => loadOpportunity(
-                        parseFloat(document.getElementById("budget").value) || 5000,
-                        item.odds1,
-                        item.odds2,
-                        document.getElementById("taxMode").value
-                    );
-                    
-                    const badgeClass = item.is_arb ? "premium" : "free";
-                    const badgeText = item.is_arb ? "Arbitrage" : "Normal Odds";
-                    const marginColor = item.margin >= 0 ? "var(--success)" : "var(--primary)";
-                    
-                    card.innerHTML = `
-                        <div class="op-header">
-                            <span class="op-tag ${badgeClass}">${badgeText}</span>
-                            <span class="op-yield" style="color: ${marginColor}">${item.margin >= 0 ? '+' : ''}${item.margin.toFixed(2)}%</span>
-                        </div>
-                        <div class="op-title">${item.title}</div>
-                        <div class="op-odds">
-                            <span>SportyBet (Home): <strong>${item.odds1.toFixed(2)}</strong></span>
-                            <span>Betika (Away): <strong>${item.odds2.toFixed(2)}</strong></span>
+                // Filter only true arbitrage opportunities (where margin is positive and ratio < 1.0)
+                const arbs = data.filter(item => item.is_arb);
+                
+                if (arbs.length === 0) {
+                    cardsContainer.innerHTML = `
+                        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-muted); background: rgba(255,255,255,0.01); border: 1px dashed var(--border-color); border-radius: 16px;">
+                            <div style="font-size: 2.2rem; margin-bottom: 12px; filter: grayscale(1); opacity: 0.6;">🔍</div>
+                            <p style="margin: 0; font-size: 0.95rem; font-weight: 600; color: #fff;">No Active Arbitrage Opportunities</p>
+                            <p style="margin: 6px 0 0 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">The scanner is actively monitoring SportyBet and Betika markets. When a risk-free margin opportunity is detected, it will appear here automatically.</p>
                         </div>
                     `;
-                    cardsContainer.appendChild(card);
-                });
+                } else {
+                    arbs.forEach(item => {
+                        const card = document.createElement("div");
+                        card.className = "opportunity-card";
+                        card.onclick = () => loadOpportunity(
+                            parseFloat(document.getElementById("budget").value) || 5000,
+                            item.odds1,
+                            item.odds2,
+                            document.getElementById("taxMode").value
+                        );
+                        
+                        const badgeClass = item.is_arb ? "premium" : "free";
+                        const badgeText = item.is_arb ? "Arbitrage" : "Normal Odds";
+                        const marginColor = item.margin >= 0 ? "var(--success)" : "var(--primary)";
+                        
+                        card.innerHTML = `
+                            <div class="op-header">
+                                <span class="op-tag ${badgeClass}">${badgeText}</span>
+                                <span class="op-yield" style="color: ${marginColor}">${item.margin >= 0 ? '+' : ''}${item.margin.toFixed(2)}%</span>
+                            </div>
+                            <div class="op-title">${item.title}</div>
+                            <div class="op-odds">
+                                <span>SportyBet (Home): <strong>${item.odds1.toFixed(2)}</strong></span>
+                                <span>Betika (Away): <strong>${item.odds2.toFixed(2)}</strong></span>
+                            </div>
+                        `;
+                        cardsContainer.appendChild(card);
+                    });
+                }
                 return;
             }
         }
@@ -694,8 +707,11 @@ function renderDemoFeed() {
         { title: "Arsenal vs Chelsea (Demo)", odds1: 2.05, odds2: 2.15, margin: 4.76, is_arb: true }
     ];
     
+    // Filter demo feed too to only show active arbs
+    const arbs = demoItems.filter(item => item.is_arb);
+    
     cardsContainer.innerHTML = "";
-    demoItems.forEach(item => {
+    arbs.forEach(item => {
         const card = document.createElement("div");
         card.className = "opportunity-card";
         card.onclick = () => loadOpportunity(
@@ -705,8 +721,8 @@ function renderDemoFeed() {
             document.getElementById("taxMode").value
         );
         
-        const badgeClass = item.is_arb ? "premium" : "free";
-        const badgeText = item.is_arb ? "Arbitrage" : "Normal Odds";
+        const badgeClass = "premium";
+        const badgeText = "Arbitrage";
         const marginColor = "var(--success)";
         
         card.innerHTML = `
