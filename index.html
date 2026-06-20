@@ -275,14 +275,71 @@
             margin-top: 20px;
         }
 
+        .opportunities-header-flex {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
         .opportunities-section h3 {
             font-family: 'Outfit', sans-serif;
             font-size: 1.2rem;
             font-weight: 700;
-            margin-bottom: 15px;
+            margin: 0;
             display: flex;
             align-items: center;
             gap: 8px;
+        }
+
+        .settings-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 5px;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .settings-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .api-settings-panel {
+            display: none;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-sizing: border-box;
+        }
+
+        .api-settings-panel input {
+            padding-left: 15px;
+        }
+
+        .save-settings-btn {
+            background: var(--primary);
+            border: none;
+            color: #fff;
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.25s ease;
+        }
+
+        .save-settings-btn:hover {
+            box-shadow: 0 0 15px var(--primary-glow);
+            transform: translateY(-1px);
         }
 
         .opportunity-cards {
@@ -378,9 +435,14 @@
         .live-dot {
             width: 8px;
             height: 8px;
-            background-color: var(--success);
+            background-color: var(--text-muted);
             border-radius: 50%;
             display: inline-block;
+            transition: all 0.3s ease;
+        }
+
+        .live-dot.active {
+            background-color: var(--success);
             box-shadow: 0 0 0 0 rgba(32, 191, 85, 0.7);
             animation: pulse 1.6s infinite;
         }
@@ -508,51 +570,160 @@
 
     <!-- Live Signals / Opportunities Feed -->
     <div class="opportunities-section">
-        <h3><span class="live-dot"></span> Live Arbitrage Feed (Click to Load)</h3>
-        <div class="opportunity-cards">
-            <!-- Card 1 -->
-            <div class="opportunity-card" onclick="loadOpportunity(5000, 2.15, 2.25, 'ke20')">
-                <div class="op-header">
-                    <span class="op-tag premium">Premium</span>
-                    <span class="op-yield">+8.61% Margin</span>
-                </div>
-                <div class="op-title">Manchester United vs Liverpool</div>
-                <div class="op-odds">
-                    <span>SportyBet: <strong>2.15</strong></span>
-                    <span>Betika: <strong>2.25</strong></span>
-                </div>
-            </div>
-            
-            <!-- Card 2 -->
-            <div class="opportunity-card" onclick="loadOpportunity(3000, 1.95, 2.30, 'none')">
-                <div class="op-header">
-                    <span class="op-tag free">Free Tier</span>
-                    <span class="op-yield">+5.49% Margin</span>
-                </div>
-                <div class="op-title">Real Madrid vs Barcelona</div>
-                <div class="op-odds">
-                    <span>SportyBet: <strong>1.95</strong></span>
-                    <span>Betika: <strong>2.30</strong></span>
-                </div>
-            </div>
+        <div class="opportunities-header-flex">
+            <h3>
+                <span class="live-dot" id="connDot"></span> 
+                Live Arbitrage Feed 
+                <span id="connStatus" style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted); margin-left: 5px;">(Connecting...)</span>
+            </h3>
+            <button class="settings-btn" onclick="toggleSettings()" title="API Settings">⚙️</button>
+        </div>
 
-            <!-- Card 3 -->
-            <div class="opportunity-card" onclick="loadOpportunity(10000, 2.05, 2.15, 'ke20')">
-                <div class="op-header">
-                    <span class="op-tag premium">Premium</span>
-                    <span class="op-yield">+4.76% Margin</span>
-                </div>
-                <div class="op-title">Arsenal vs Chelsea</div>
-                <div class="op-odds">
-                    <span>SportyBet: <strong>2.05</strong></span>
-                    <span>Betika: <strong>2.15</strong></span>
-                </div>
+        <!-- Hidden API Configuration Panel -->
+        <div class="api-settings-panel" id="settingsPanel">
+            <label for="apiUrl" style="font-size: 0.75rem; margin-bottom: 5px; display: block;">Render Scraper API URL</label>
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="apiUrl" placeholder="e.g. https://nexus-billing-bot.onrender.com" style="flex: 1; padding: 14px 15px; border-radius: 12px; border: 1px solid var(--border-color); background: rgba(30, 37, 50, 0.4); color: #fff;">
+                <button class="save-settings-btn" onclick="saveSettings()">Save</button>
             </div>
+        </div>
+
+        <div class="opportunity-cards" id="opportunityCards">
+            <!-- Opportunity Cards dynamically loaded here -->
         </div>
     </div>
 </div>
 
 <script>
+// Load saved API URL or default
+document.addEventListener("DOMContentLoaded", () => {
+    const savedUrl = localStorage.getItem("nexus_api_url") || "";
+    document.getElementById("apiUrl").value = savedUrl;
+    fetchLiveFeed();
+    // Poll the backend API every 15 seconds for fresh match feeds
+    setInterval(fetchLiveFeed, 15000);
+});
+
+function toggleSettings() {
+    const panel = document.getElementById("settingsPanel");
+    panel.style.display = panel.style.display === "block" ? "none" : "block";
+}
+
+function saveSettings() {
+    const val = document.getElementById("apiUrl").value.trim().replace(/\/$/, "");
+    localStorage.setItem("nexus_api_url", val);
+    toggleSettings();
+    fetchLiveFeed();
+}
+
+async function fetchLiveFeed() {
+    const savedUrl = localStorage.getItem("nexus_api_url");
+    const connDot = document.getElementById("connDot");
+    const connStatus = document.getElementById("connStatus");
+    const cardsContainer = document.getElementById("opportunityCards");
+
+    if (!savedUrl) {
+        // No custom URL set, load demo feed and show offline status
+        connDot.className = "live-dot";
+        connDot.style.backgroundColor = "var(--text-muted)";
+        connStatus.innerText = "(Demo Feed - Configure API to go Live)";
+        connStatus.style.color = "var(--text-muted)";
+        renderDemoFeed();
+        return;
+    }
+
+    try {
+        const response = await fetch(`${savedUrl}/api/feed`);
+        if (response.ok) {
+            const data = await response.json();
+            
+            if (data && data.length > 0) {
+                connDot.className = "live-dot active";
+                connDot.style.backgroundColor = ""; // let css handle it
+                connStatus.innerText = "(● Connected to Live Scanner)";
+                connStatus.style.color = "var(--success)";
+                
+                cardsContainer.innerHTML = "";
+                data.forEach(item => {
+                    const card = document.createElement("div");
+                    card.className = "opportunity-card";
+                    card.onclick = () => loadOpportunity(
+                        parseFloat(document.getElementById("budget").value) || 5000,
+                        item.odds1,
+                        item.odds2,
+                        document.getElementById("taxMode").value
+                    );
+                    
+                    const badgeClass = item.is_arb ? "premium" : "free";
+                    const badgeText = item.is_arb ? "Arbitrage" : "Normal Odds";
+                    const marginColor = item.margin >= 0 ? "var(--success)" : "var(--primary)";
+                    
+                    card.innerHTML = `
+                        <div class="op-header">
+                            <span class="op-tag ${badgeClass}">${badgeText}</span>
+                            <span class="op-yield" style="color: ${marginColor}">${item.margin >= 0 ? '+' : ''}${item.margin.toFixed(2)}%</span>
+                        </div>
+                        <div class="op-title">${item.title}</div>
+                        <div class="op-odds">
+                            <span>SportyBet (Home): <strong>${item.odds1.toFixed(2)}</strong></span>
+                            <span>Betika (Away): <strong>${item.odds2.toFixed(2)}</strong></span>
+                        </div>
+                    `;
+                    cardsContainer.appendChild(card);
+                });
+                return;
+            }
+        }
+    } catch (e) {
+        console.warn("Could not connect to live API scanner. Using demo fallback.", e);
+    }
+
+    // Connection failed fallback
+    connDot.className = "live-dot";
+    connDot.style.backgroundColor = "#ff9f1c";
+    connStatus.innerText = "(● Scanner Offline - Demo Mode)";
+    connStatus.style.color = "#ff9f1c";
+    renderDemoFeed();
+}
+
+function renderDemoFeed() {
+    const cardsContainer = document.getElementById("opportunityCards");
+    const demoItems = [
+        { title: "Manchester United vs Liverpool (Demo)", odds1: 2.15, odds2: 2.25, margin: 8.61, is_arb: true },
+        { title: "Real Madrid vs Barcelona (Demo)", odds1: 1.95, odds2: 2.30, margin: 5.49, is_arb: false },
+        { title: "Arsenal vs Chelsea (Demo)", odds1: 2.05, odds2: 2.15, margin: 4.76, is_arb: true }
+    ];
+    
+    cardsContainer.innerHTML = "";
+    demoItems.forEach(item => {
+        const card = document.createElement("div");
+        card.className = "opportunity-card";
+        card.onclick = () => loadOpportunity(
+            parseFloat(document.getElementById("budget").value) || 5000,
+            item.odds1,
+            item.odds2,
+            document.getElementById("taxMode").value
+        );
+        
+        const badgeClass = item.is_arb ? "premium" : "free";
+        const badgeText = item.is_arb ? "Arbitrage" : "Normal Odds";
+        const marginColor = "var(--success)";
+        
+        card.innerHTML = `
+            <div class="op-header">
+                <span class="op-tag ${badgeClass}">${badgeText}</span>
+                <span class="op-yield" style="color: ${marginColor}">${item.margin >= 0 ? '+' : ''}${item.margin.toFixed(2)}%</span>
+            </div>
+            <div class="op-title">${item.title}</div>
+            <div class="op-odds">
+                <span>SportyBet (Home): <strong>${item.odds1.toFixed(2)}</strong></span>
+                <span>Betika (Away): <strong>${item.odds2.toFixed(2)}</strong></span>
+            </div>
+        `;
+        cardsContainer.appendChild(card);
+    });
+}
+
 function loadOpportunity(budget, odds1, odds2, taxMode) {
     document.getElementById('budget').value = budget;
     document.getElementById('odds1').value = odds1;
@@ -579,16 +750,13 @@ function calculateStakes() {
         return;
     }
 
-    // Determine Tax Rate (on net winnings)
     let taxRate = 0.0;
     if (taxMode === 'ke20') {
-        taxRate = 0.20; // 20% Withholding Tax
+        taxRate = 0.20;
     } else if (taxMode === 'custom10') {
-        taxRate = 0.10; // 10% Withholding Tax
+        taxRate = 0.10;
     }
 
-    // Calculate Tax-Adjusted Effective Odds
-    // Effective Payout = Stake * ((Odds - 1) * (1 - TaxRate) + 1)
     const odds1 = (odds1_raw - 1) * (1 - taxRate) + 1;
     const odds2 = (odds2_raw - 1) * (1 - taxRate) + 1;
 
@@ -614,7 +782,7 @@ function calculateStakes() {
     }
 
     const currentMarginPercent = (1 - arbRatio) * 100;
-    const dailyPassFee = 50.0; // KES 50 fee base overhead
+    const dailyPassFee = 50.0;
     const minimumRecommendedStake = Math.ceil(dailyPassFee / (currentMarginPercent / 100));
 
     if (budget < minimumRecommendedStake) {
@@ -639,8 +807,6 @@ function calculateStakes() {
     }
 
     const totalInvested = stake1 + stake2;
-    
-    // Net profit after tax deductions: (Stake * EffectiveOdds) - TotalInvested
     const netProfit1 = (stake1 * odds1) - totalInvested;
     const netProfit2 = (stake2 * odds2) - totalInvested;
 
